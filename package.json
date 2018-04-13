@@ -1,0 +1,19 @@
+{
+  "name": "jenkins-runner",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "nodemon server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.18.2",
+    "express": "^4.15.5",
+    "load-json-file": "^4.0.0",
+    "request": "^2.83.0",
+    "walk": "^2.3.9"
+  },
+  "devDependencies": {
+    "nodemon": "^1.14.3",
+    "qs": "^6.5.1"
+  }
+}

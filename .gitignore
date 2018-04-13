@@ -1,0 +1,6 @@
+*.iml
+package-lock.json
+/.idea/
+/nbproject/
+/node_modules/
+/config.json

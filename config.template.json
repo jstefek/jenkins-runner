@@ -1,0 +1,6 @@
+/* use this to create your own 'config.json'*/
+{
+  "pathToGitRepo": "/path/to/you/git/repo",
+  "jenkinsJobUrl": "http://url/to/the/job/buildWithParameters",
+  "jenkinsJobToken": "yourFANCYtoken"
+}

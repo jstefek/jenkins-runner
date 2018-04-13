@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jenkins runner</title>
+    <link rel="stylesheet" href="w3.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="jq.js"></script>
+</head>
+<body>
+<script type="application/javascript">
+
+    var allSelects = [
+        {id: 'ENV', path: '/envs'},
+        {id: 'FEATURE', path: '/features'},
+        {id: 'BRANCH', path: '/branches'}];
+
+    var fadeTimeout = 400;
+    var inProgress = false;
+
+    function getBranchName() {
+        return $('#BRANCH').val();
+    }
+
+    function getData() {
+        var data = {};
+        data.BRANCH = getBranchName();
+        data.ENV = $('#ENV').val();
+        data.FEATURE = $('#FEATURE').val();
+        var lines = $('#SCENARIO').val()
+            .filter(function (val) {
+                return !!val;
+            });
+        if (lines.length > 0) {
+            data.FEATURE += ':' + lines.join(':');
+        }
+        data.BROWSER = $('#BROWSER').val();
+        data.APOLLO_VERSION = $('#APOLLO_VERSION').val();
+        data.SCHEDULER_VERSION = $('#SCHEDULER_VERSION').val();
+        data.SETUP_CONTAINERS = $('#SETUP_CONTAINERS').is(':checked');
+        data.CONTAINERS_COUNT = $('#CONTAINERS_COUNT').val();
+        return data;
+    }
+
+    function closeAlert(element) {
+        var parent = $(element).parent();
+        parent.fadeOut(fadeTimeout, 'swing', function () {
+            parent.remove();
+        });
+    }
+
+    function createAlert(text, conf) {
+        var color = conf.color || 'w3-light-blue';
+        var div = $("<div class='w3-panel " + color + " w3-display-container w3-card-4 w3-large w3-round-xlarge w3-animate-opacity'/>");
+        $("<p>" + text + "</p>").appendTo(div);
+        if (!!conf.info) {
+            var importantInfo = conf.info;
+            delete importantInfo.token;
+            $("<p>Using data: " + JSON.stringify(importantInfo, null, 2) + "</p>").appendTo(div);
+        }
+        $("<span onclick='closeAlert(this)' class='w3-button " + color + " w3-display-topright '>&times;</span>").appendTo(div);
+        div.appendTo(document.getElementById('alerts'));
+        if (!!conf.timeout) {
+            setTimeout(function () {
+                if (div.length > 0) {// div still exists?
+                    div.fadeOut(fadeTimeout, 'swing', function () {
+                        div.remove();
+                    });
+                }
+            }, conf.timeout)
+        }
+    }
+
+    function triggerRemoteBuild() {
+        return new Promise(function (resolve, reject) {
+            var data = getData();
+
+            createAlert('Request for triggering remote build send', {timeout: 2000});
+            $.post('/createRequest', {data: data})
+                .done(function () {
+                    createAlert('Remote build triggered!', {timeout: 10000, color: 'w3-green', info: data});
+                    resolve();
+                })
+                .fail(function () {
+                    createAlert('There was a problem in communication with the server, the build was not triggered!',
+                        {
+                            color: 'w3-red',
+                            info: data
+                        });
+                    reject();
+                });
+        });
+    }
+
+    function merge(fromO, toO) {
+        for (var a in fromO) {
+            toO[a] = fromO[a];
+        }
+        return toO;
+    }
+
+    function refreshSelectOptions(opts) {
+        console.log('opts', opts);
+        var selects = opts;
+        if (!opts.forEach) { // wrap item to an array
+            console.log('wrapping')
+            selects = [opts];
+        }
+        console.log('selects', selects);
+        var options = {branch: getBranchName()};
+        var promises = [];
+        selects.forEach(function (act) {
+            promises.push(new Promise(function (resolve, reject) {
+                // clone object
+                optionsAct = JSON.parse(JSON.stringify(options));
+                // update options
+                optionsAct = merge(act.options, optionsAct);
+                // send request
+                $.getJSON(act.path, optionsAct)
+                    .done(function (data) {
+                        var items = [];
+                        $.each(data, function (key, val) {
+                            if (act.id === 'BRANCH') {
+                                items.push("<option name='" + key + "' value='" + val + "'" + (val === 'master' ? 'selected' : '') + ">" + val + "</option>");
+                            } else if (act.id === 'ENV') {
+                                items.push("<option name='" + key + "' value='" + val + "'" + (val === 'collab-demo' ? 'selected' : '') + ">" + val + "</option>");
+                            } else if (act.id === 'SCENARIO') {
+                                items.push("<option name='" + key + "' value='" + val.index + "' >" + val.name + "</option>");
+                            }
+                            else {
+                                items.push("<option name='" + key + "' value='" + val + "'>" + val + "</option>");
+                            }
+                        });
+                        if (act.id === 'FEATURE' || act.id === 'SCENARIO') {
+                            items.unshift("<option name='empty' value='' selected></option>");
+                        }
+                        $(document.getElementById(act.id))
+                            .empty()
+                            .html(items.join(''));
+                        resolve();
+                    })
+                    .fail(function () {
+                        reject('There was a problem when getting JSON from path \'' + act.path + '\'')
+                    });
+            }));
+
+        });
+        return Promise.all(promises);
+    }
+
+    function initSelects() {
+        return new Promise(function (resolve) {
+            for (var i = 0; i < allSelects.length; i++) {
+                var act = allSelects[i];
+                var selectElement = $(document.getElementById(act.id));
+                if (act.id === 'FEATURE') {
+                    selectElement.on('change', function () {
+                        startProgress()
+                            .then(validate)
+                            .then(refreshScenarios)
+                            .then(stopProgress)
+                            .catch(function (err) {
+                                createAlert(err, {color: 'w3-red'})
+                                stopProgress();
+                            });
+                    });
+                }
+                else if (act.id === 'BRANCH') {
+                    selectElement.on('change', function () {
+                        startProgress()
+                            .then(refreshSelectsDependingOnBranch)
+                            .then(cleanupScenarios)
+                            .then(stopProgress)
+                            .catch(function (err) {
+                                createAlert(err, {color: 'w3-red'})
+                                stopProgress();
+                            });
+                    });
+                }
+            }
+            resolve();
+        });
+    }
+
+    function refreshSelectsDependingOnBranch() {
+        return refreshSelectOptions([
+            {id: 'FEATURE', path: '/features'},
+            {id: 'ENV', path: '/envs'}
+        ]);
+    }
+
+    function refreshScenarios() {
+        return refreshSelectOptions(
+            {id: 'SCENARIO', path: '/scenarios', options: {feature: $('#FEATURE').val()}}
+        );
+    }
+
+    function cleanupScenarios() {
+        return new Promise(function (resolve) {
+            $(document.getElementById('SCENARIO')).empty();
+            resolve();
+        });
+    }
+
+    function startProgress() {
+        return new Promise(function (resolve) {
+            if (!inProgress) {
+                inProgress = true;
+                $('#progress').addClass('w3-spin');
+                $('#header').removeClass('w3-blue').addClass('w3-yellow');
+            }
+            resolve();
+        });
+    }
+
+    function stopProgress() {
+        return new Promise(function (resolve) {
+            if (inProgress) {
+                $('#progress').removeClass('w3-spin');
+                $('#header').removeClass('w3-yellow').addClass('w3-blue');
+                inProgress = false;
+            }
+            resolve();
+        });
+    }
+
+    function refreshBranches() {
+        return refreshSelectOptions({id: 'BRANCH', path: '/branches'});
+    }
+
+    function validate() {
+        return new Promise(function (resolve) {
+            resolve();
+        });
+    }
+
+    function reinitialize(forceReinitialize) {
+        if (!!forceReinitialize || $('#REINITIALIZE').is(':checked')) {
+            return startProgress()
+                .then(refreshBranches)
+                .then(refreshSelectsDependingOnBranch)
+                .then(validate)
+                .then(cleanupScenarios)
+                .then(stopProgress)
+                .catch(function (err) {
+                    createAlert(err, {color: 'w3-red'})
+                    stopProgress();
+                });
+        }
+    }
+
+    $(function () {
+        initSelects()
+            .then(reinitialize(true));
+    })
+</script>
+<div class="w3-card-4 w3-margin-bottom">
+    <div id="header" class="w3-container w3-blue">
+        <h2 class="w3-left">Parameters</h2>
+        <span id="progress" class="fa fa-refresh w3-xxlarge w3-right w3-margin-top w3-margin-right"
+              style="cursor: pointer;" title="reinitialize"
+              onclick="reinitialize(true)"></span>
+    </div>
+    <div class="w3-row-padding">
+        <p class="w3-third">
+            <label for="BRANCH" class="w3-text-blue">branches</label>
+            <select id="BRANCH" class="w3-select w3-border w3-round-xlarge"></select>
+        </p>
+        <p class="w3-third">
+            <label for="ENV" class="w3-text-blue">env</label>
+            <select id="ENV" class="w3-select w3-border w3-round-xlarge"></select>
+        </p>
+        <p class="w3-third">
+            <label for="BROWSER" class="w3-text-blue">browser</label>
+            <select id="BROWSER" class="w3-select w3-border w3-round-xlarge">
+                <option value="chrome" selected>chrome</option>
+                <option value="firefox">firefox</option>
+            </select>
+        </p>
+        <div class="w3-third">
+            <p class="w3-half">
+                <label for="SETUP_CONTAINERS" class="w3-text-blue">setup containers</label><br/>
+                <input id="SETUP_CONTAINERS" class="w3-check w3-border w3-round-xlarge" type="checkbox"
+                       checked="checked"/>
+            </p>
+            <p class="w3-half">
+                <label for="CONTAINERS_COUNT" class="w3-text-blue">containers count</label>
+                <input id="CONTAINERS_COUNT" class="w3-input w3-border w3-round-xlarge" type="number" value="6"/>
+            </p>
+        </div>
+        <p class="w3-third">
+            <label for="APOLLO_VERSION" class="w3-text-blue">apollo version</label>
+            <input id="APOLLO_VERSION" class="w3-input w3-border w3-round-xlarge" type="text" value=""
+                   placeholder="version|empty"/>
+        </p>
+        <p class="w3-third">
+            <label for="SCHEDULER_VERSION" class="w3-text-blue">scheduler version</label>
+            <input id="SCHEDULER_VERSION" class="w3-input w3-border w3-round-xlarge" type="text" value=""
+                   placeholder="version|empty"/>
+        </p>
+        <p class="w3-half">
+            <label for="FEATURE" class="w3-text-blue">feature</label>
+            <select id="FEATURE" class="w3-select w3-border w3-round-xlarge"></select>
+        </p>
+        <p class="w3-half">
+            <label for="SCENARIO" class="w3-text-blue">scenarios (select multiple or leave empty for whole
+                feature)</label>
+            <select id="SCENARIO" class="w3-select w3-border w3-round-xlarge" multiple="multiple"
+                    size="10"></select>
+        </p>
+        <p class="w3-third">
+            <button id="send" class="w3-btn w3-blue w3-round-xlarge"
+                    onclick="triggerRemoteBuild().then(reinitialize(false))">
+                send
+            </button>
+        </p>
+        <p class="w3-third w3-right">
+            <label for="REINITIALIZE" class="w3-text-blue">reinitialize this configuration after build</label>
+            <input id="REINITIALIZE" class="w3-check w3-border w3-round-xlarge" type="checkbox"/>
+        </p>
+    </div>
+</div>
+<div id="alerts" class="w3-container w3-section"></div>
+</body>
+</html>
