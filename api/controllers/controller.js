@@ -1,10 +1,15 @@
 'use strict';
 
-var exec = require('child_process').exec;
-var request = require('request');
-var loadJsonFile = require('load-json-file');
+var exec = require('child_process').exec,
+    request = require('request'),
+    loadJsonFile = require('load-json-file');
 
-var configuration = loadJsonFile.sync('config.json');
+try {
+    var configuration = loadJsonFile.sync('config.json');
+} catch (e) {
+    throw 'File "config.json" does not exist. You can make your own config file from the "config.template.json".'
+}
+
 var path = configuration.pathToGitRepo;
 var oldTime = undefined;
 var interval = 10000; // millis
@@ -69,18 +74,24 @@ function sendFileNamesFromGitBranch(path, dir, branch, filter, response, map) {
 }
 
 function sendBranches(path, res) {
-    // console.log(new Date());
-    exec('git ls-remote --heads origin', {cwd: path}, function (err, stdout, stderr) {
-        if (err) {
-            res.status(400).send(err);
-            console.log(err);
-        } else {
+    return function () {
+        return new Promise(function (resolve, reject) {
             // console.log(new Date());
-            res.send(stdout.split('\n').map(function (value) {
-                return value.substring(value.indexOf('heads/') + 6)
-            }).sort());
-        }
-    });
+            exec('git ls-remote --heads origin', {cwd: path}, function (err, stdout, stderr) {
+                if (err) {
+                    res.status(400).send(err);
+                    console.log(err);
+                    reject();
+                } else {
+                    // console.log(new Date());
+                    res.send(stdout.split('\n').map(function (value) {
+                        return value.substring(value.indexOf('heads/') + 6)
+                    }).sort());
+                    resolve();
+                }
+            });
+        });
+    }
 }
 
 function sendProfileNames(path, filename, branch, response) {

@@ -9,14 +9,9 @@
 </head>
 <body>
 <script type="application/javascript">
-
-    var allSelects = [
-        {id: 'ENV', path: '/envs'},
-        {id: 'FEATURE', path: '/features'},
-        {id: 'BRANCH', path: '/branches'}];
-
     var fadeTimeout = 400;
     var inProgress = false;
+    var createdFeatures = 1;
 
     function getBranchName() {
         return $('#BRANCH').val();
@@ -26,19 +21,38 @@
         var data = {};
         data.BRANCH = getBranchName();
         data.ENV = $('#ENV').val();
-        data.FEATURE = $('#FEATURE').val();
-        var lines = $('#SCENARIO').val()
-            .filter(function (val) {
-                return !!val;
-            });
-        if (lines.length > 0) {
-            data.FEATURE += ':' + lines.join(':');
-        }
         data.BROWSER = $('#BROWSER').val();
         data.APOLLO_VERSION = $('#APOLLO_VERSION').val();
         data.SCHEDULER_VERSION = $('#SCHEDULER_VERSION').val();
         data.SETUP_CONTAINERS = $('#SETUP_CONTAINERS').is(':checked');
         data.CONTAINERS_COUNT = $('#CONTAINERS_COUNT').val();
+
+        // get features + scenarios
+        var features = [];
+        $("[id^='FEATURE']").each(function () {
+            features.push($(this).val());
+        });
+        var scenarios = [];
+        $("[id^='SCENARIO']").each(function () {
+            scenarios.push(
+                $(this).val()
+                    .filter(function (value) {
+                        return !!value;
+                    })
+                    .join(':')
+            );
+        });
+        for (var i = 0; i < features.length; i++) {
+            if (!!scenarios[i]) {
+                features[i] = features[i] + ':' + scenarios[i];
+            }
+        }
+        if (features.length === 1) {
+            data.FEATURE = features[0];
+        } else {
+            data.FEATURE = features.join(',');
+        }
+
         return data;
     }
 
@@ -74,7 +88,6 @@
     function triggerRemoteBuild() {
         return new Promise(function (resolve, reject) {
             var data = getData();
-
             createAlert('Request for triggering remote build send', {timeout: 2000});
             $.post('/createRequest', {data: data})
                 .done(function () {
@@ -92,6 +105,7 @@
         });
     }
 
+    // merge two configurations together
     function merge(fromO, toO) {
         for (var a in fromO) {
             toO[a] = fromO[a];
@@ -100,13 +114,10 @@
     }
 
     function refreshSelectOptions(opts) {
-        console.log('opts', opts);
         var selects = opts;
         if (!opts.forEach) { // wrap item to an array
-            console.log('wrapping')
             selects = [opts];
         }
-        console.log('selects', selects);
         var options = {branch: getBranchName()};
         var promises = [];
         selects.forEach(function (act) {
@@ -124,14 +135,14 @@
                                 items.push("<option name='" + key + "' value='" + val + "'" + (val === 'master' ? 'selected' : '') + ">" + val + "</option>");
                             } else if (act.id === 'ENV') {
                                 items.push("<option name='" + key + "' value='" + val + "'" + (val === 'collab-demo' ? 'selected' : '') + ">" + val + "</option>");
-                            } else if (act.id === 'SCENARIO') {
+                            } else if (act.id.indexOf('SCENARIO') >= 0) {
                                 items.push("<option name='" + key + "' value='" + val.index + "' >" + val.name + "</option>");
                             }
                             else {
                                 items.push("<option name='" + key + "' value='" + val + "'>" + val + "</option>");
                             }
                         });
-                        if (act.id === 'FEATURE' || act.id === 'SCENARIO') {
+                        if (act.id.indexOf('FEATURE') >= 0 || act.id.indexOf('SCENARIO') >= 0) {
                             items.unshift("<option name='empty' value='' selected></option>");
                         }
                         $(document.getElementById(act.id))
@@ -148,58 +159,91 @@
         return Promise.all(promises);
     }
 
-    function initSelects() {
+    function addAddFeatureHandler() {
         return new Promise(function (resolve) {
-            for (var i = 0; i < allSelects.length; i++) {
-                var act = allSelects[i];
-                var selectElement = $(document.getElementById(act.id));
-                if (act.id === 'FEATURE') {
-                    selectElement.on('change', function () {
+            var $addFeature = $(document.getElementById('ADD_FEATURE'));
+            $addFeature.on('click', function () {
+                createdFeatures += 1;
+                var featureId = 'FEATURE-' + createdFeatures;
+                var scenarioId = 'SCENARIO-' + createdFeatures;
+                var removeButtonID = 'DELETE-' + createdFeatures;
+                var parentID = 'PARENT-' + createdFeatures;
+                var elements = $(
+                    '<div id="' + parentID + '" class="w3-row-padding">\n' +
+                    '   <div class="w3-row">\n' +
+                    '      <button id="' + removeButtonID + '" class="fa fa-minus w3-right w3-btn w3-red w3-hover-orange w3-round-xlarge w3-animate-zoom"></button>\n' +
+                    '   </div>\n' +
+                    '   <p class="w3-quarter w3-animate-left">\n' +
+                    '      <label for="' + featureId + '" class="w3-text-blue">feature</label>\n' +
+                    '      <select id="' + featureId + '" class="w3-select w3-border w3-round-xlarge"></select>\n' +
+                    '   </p>\n' +
+                    '   <p class="w3-threequarter w3-animate-right">\n' +
+                    '      <label for="' + scenarioId + '" class="w3-text-blue">scenarios (select multiple or leave empty for whole feature)</label>\n' +
+                    '      <select id="' + scenarioId + '" class="w3-select w3-border w3-round-xlarge" multiple="multiple" size="10"></select>\n' +
+                    '   </p>\n' +
+                    '</div>'
+                );
+                elements.insertBefore($addFeature);
+                $(document.getElementById(removeButtonID)).on('click', function () {
+                    $(document.getElementById(parentID)).fadeOut("slow", "linear", function () {
+                        $(document.getElementById(parentID)).remove();
+                        validate();
+                    });
+                });
+                addFeatureSelectHandler(featureId)()
+                    .then(refreshFeatureOptions(featureId))
+                    .then(validate)
+                    .then(resolve);
+            });
+        });
+    }
+
+    function addBranchSelectHandler() {
+        return new Promise(function (resolve) {
+            $(document.getElementById('BRANCH'))
+                .on('change', function () {
+                    startProgress()
+                        .then(refreshSelectsDependingOnBranch)
+                        .then(cleanupScenarios)
+                        .then(stopProgress)
+                        .catch(function (err) {
+                            createAlert(err, {color: 'w3-red'})
+                            stopProgress();
+                        });
+                });
+            resolve();
+        });
+    }
+
+    function addFeatureSelectHandler(id) {
+        return function () {
+            return new Promise(function (resolve) {
+                $(document.getElementById(id))
+                    .on('change', function () {
                         startProgress()
                             .then(validate)
-                            .then(refreshScenarios)
+                            .then(refreshScenarioOptions(id))
                             .then(stopProgress)
                             .catch(function (err) {
                                 createAlert(err, {color: 'w3-red'})
                                 stopProgress();
                             });
                     });
-                }
-                else if (act.id === 'BRANCH') {
-                    selectElement.on('change', function () {
-                        startProgress()
-                            .then(refreshSelectsDependingOnBranch)
-                            .then(cleanupScenarios)
-                            .then(stopProgress)
-                            .catch(function (err) {
-                                createAlert(err, {color: 'w3-red'})
-                                stopProgress();
-                            });
-                    });
-                }
-            }
-            resolve();
-        });
+                resolve();
+            });
+        }
     }
 
-    function refreshSelectsDependingOnBranch() {
-        return refreshSelectOptions([
-            {id: 'FEATURE', path: '/features'},
-            {id: 'ENV', path: '/envs'}
-        ]);
+    function refreshFeatureOptions(featureId) {
+        return refreshSelectOptions([{id: featureId, path: '/features'}]);
     }
 
-    function refreshScenarios() {
-        return refreshSelectOptions(
-            {id: 'SCENARIO', path: '/scenarios', options: {feature: $('#FEATURE').val()}}
-        );
-    }
-
-    function cleanupScenarios() {
-        return new Promise(function (resolve) {
-            $(document.getElementById('SCENARIO')).empty();
-            resolve();
-        });
+    function refreshScenarioOptions(featureId) {
+        return refreshSelectOptions({
+            id: featureId.replace('FEATURE', 'SCENARIO'),
+            path: '/scenarios',
+            options: {feature: $('#' + featureId).val()}
+        })
     }
 
     function startProgress() {
@@ -208,6 +252,7 @@
                 inProgress = true;
                 $('#progress').addClass('w3-spin');
                 $('#header').removeClass('w3-blue').addClass('w3-yellow');
+                $('#ADD_FEATURE').addClass('w3-disabled').prop('disabled', true);
             }
             resolve();
         });
@@ -218,48 +263,95 @@
             if (inProgress) {
                 $('#progress').removeClass('w3-spin');
                 $('#header').removeClass('w3-yellow').addClass('w3-blue');
+                $('#ADD_FEATURE').removeClass('w3-disabled').prop('disabled', false);
                 inProgress = false;
             }
             resolve();
         });
     }
 
-    function refreshBranches() {
+    function refreshBranch() {
         return refreshSelectOptions({id: 'BRANCH', path: '/branches'});
+    }
+
+    function removeAddedFeaturesAndScenarios() {
+        return new Promise(function (resolve) {
+            $("[id^='DELETE']").each(function () {
+                $(this).click();
+            });
+            resolve();
+        });
+
+    }
+
+    function refreshSelectsDependingOnBranch() {
+        var toRefresh = [{id: 'ENV', path: '/envs'}];
+        // add all features
+        $("[id^='FEATURE']").each(function () {
+            toRefresh.push({id: this.id, path: '/features'});
+        });
+        return refreshSelectOptions(toRefresh);
     }
 
     function validate() {
         return new Promise(function (resolve) {
+            var features = [];
+            $("[id^='FEATURE']").each(function () {
+                features.push($(this).val());
+            });
+            for (var i = 0; i < features.length; i++) {
+                if (!features[i]) {
+                    $('#send').addClass('w3-disabled').prop('disabled', true);
+                    break;
+                } else {
+                    $('#send').removeClass('w3-disabled').prop('disabled', false);
+                }
+            }
+            resolve();
+        });
+    }
+
+    function cleanupScenarios() {
+        return new Promise(function (resolve) {
+            $("[id^='SCENARIO']").each(function () {
+                $(this).empty();
+            });
             resolve();
         });
     }
 
     function reinitialize(forceReinitialize) {
-        if (!!forceReinitialize || $('#REINITIALIZE').is(':checked')) {
-            return startProgress()
-                .then(refreshBranches)
-                .then(refreshSelectsDependingOnBranch)
-                .then(validate)
-                .then(cleanupScenarios)
-                .then(stopProgress)
-                .catch(function (err) {
-                    createAlert(err, {color: 'w3-red'})
-                    stopProgress();
-                });
+        return function () {
+            if (!!forceReinitialize || $('#REINITIALIZE').is(':checked')) {
+                return startProgress()
+                    .then(refreshBranch)
+                    .then(removeAddedFeaturesAndScenarios)
+                    .then(refreshSelectsDependingOnBranch)
+                    .then(validate)
+                    .then(cleanupScenarios)
+                    .then(stopProgress)
+                    .catch(function (err) {
+                        createAlert(err, {color: 'w3-red'})
+                        stopProgress();
+                    });
+            }
         }
     }
 
     $(function () {
-        initSelects()
-            .then(reinitialize(true));
+        validate()
+            .then(addBranchSelectHandler)
+            .then(addFeatureSelectHandler('FEATURE-01'))
+            .then(addAddFeatureHandler)
+            .then(setTimeout(reinitialize(true), 1));// not working with 'reinitialize(true)' only, have to add the timeout
     })
 </script>
 <div class="w3-card-4 w3-margin-bottom">
-    <div id="header" class="w3-container w3-blue">
+    <div id="header" class="w3-container w3-blue w3-animate-top">
         <h2 class="w3-left">Parameters</h2>
         <span id="progress" class="fa fa-refresh w3-xxlarge w3-right w3-margin-top w3-margin-right"
               style="cursor: pointer;" title="reinitialize"
-              onclick="reinitialize(true)"></span>
+              onclick="reinitialize(true)()"></span>
     </div>
     <div class="w3-row-padding">
         <p class="w3-third">
@@ -285,7 +377,8 @@
             </p>
             <p class="w3-half">
                 <label for="CONTAINERS_COUNT" class="w3-text-blue">containers count</label>
-                <input id="CONTAINERS_COUNT" class="w3-input w3-border w3-round-xlarge" type="number" value="6"/>
+                <input id="CONTAINERS_COUNT" class="w3-input w3-border w3-round-xlarge" type="number" value="6"
+                       min="1"/>
             </p>
         </div>
         <p class="w3-third">
@@ -298,24 +391,31 @@
             <input id="SCHEDULER_VERSION" class="w3-input w3-border w3-round-xlarge" type="text" value=""
                    placeholder="version|empty"/>
         </p>
-        <p class="w3-half">
-            <label for="FEATURE" class="w3-text-blue">feature</label>
-            <select id="FEATURE" class="w3-select w3-border w3-round-xlarge"></select>
+        <p class="w3-quarter w3-animate-left">
+            <label for="FEATURE-01" class="w3-text-blue">feature</label>
+            <select id="FEATURE-01" class="w3-select w3-border w3-round-xlarge"></select>
         </p>
-        <p class="w3-half">
-            <label for="SCENARIO" class="w3-text-blue">scenarios (select multiple or leave empty for whole
+        <p class="w3-threequarter w3-animate-right">
+            <label for="SCENARIO-01" class="w3-text-blue">scenarios (select multiple or leave empty for whole
                 feature)</label>
-            <select id="SCENARIO" class="w3-select w3-border w3-round-xlarge" multiple="multiple"
-                    size="10"></select>
+            <select id="SCENARIO-01" class="w3-select w3-border w3-round-xlarge" multiple="multiple" size="10"></select>
         </p>
-        <p class="w3-third">
-            <button id="send" class="w3-btn w3-blue w3-round-xlarge"
+
+        <div class="w3-row">
+            <button id="ADD_FEATURE"
+                    class="fa fa-plus w3-right w3-button w3-green w3-hover-orange w3-round-xlarge w3-animate-zoom"></button>
+        </div>
+    </div>
+
+    <div class="w3-panel">
+        <p class="w3-twothird">
+            <button id="send" class="w3-third w3-btn w3-blue w3-round-xlarge"
                     onclick="triggerRemoteBuild().then(reinitialize(false))">
-                send
+                Run the job
             </button>
         </p>
-        <p class="w3-third w3-right">
-            <label for="REINITIALIZE" class="w3-text-blue">reinitialize this configuration after build</label>
+        <p class="w3-third">
+            <label for="REINITIALIZE" class="w3-text-blue">cleanup after running the job</label>
             <input id="REINITIALIZE" class="w3-check w3-border w3-round-xlarge" type="checkbox"/>
         </p>
     </div>
