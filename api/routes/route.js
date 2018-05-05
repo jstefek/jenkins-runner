@@ -9,8 +9,8 @@ module.exports = function (app) {
         .get(controller.getEnvs);
     app.route('/features')
         .get(controller.getFeatures);
-    app.route('/profiles')
-        .get(controller.getProfiles);
+    // app.route('/profiles')
+    //     .get(controller.getProfiles);
     app.route('/scenarios')
         .get(controller.getScenarios);
     app.route('/createRequest')
