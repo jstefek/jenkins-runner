@@ -1,12 +1,19 @@
 'use strict';
 var loadJsonFile = require('load-json-file');
 
-var handler = require('./localGitHandler');
 try {
     var configuration = loadJsonFile.sync('config.json');
 } catch (e) {
     throw 'File "config.json" does not exist. You can make your own config file from the "config.template.json".'
 }
+
+var handler;
+if (!!configuration.bitbucketUrl) {
+    handler = require('./bitbucketHandler');
+} else {
+    handler = require('./localGitHandler');
+}
+
 handler.init(configuration);
 exports.createRequest = handler.createRequest;
 exports.getBranches = handler.getBranches;

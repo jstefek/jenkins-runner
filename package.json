@@ -6,6 +6,7 @@
     "start": "nodemon server.js"
   },
   "dependencies": {
+    "base-64": "^0.1.0",
     "body-parser": "^1.18.2",
     "express": "^4.15.5",
     "load-json-file": "^4.0.0",

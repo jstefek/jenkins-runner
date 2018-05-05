@@ -2,5 +2,10 @@
 {
   "pathToGitRepo": "/path/to/you/git/repo",
   "jenkinsJobUrl": "http://url/to/the/job/buildWithParameters",
-  "jenkinsJobToken": "yourFANCYtoken"
+  "jenkinsJobToken": "yourFANCYtoken",
+  "bitbucketUrl": "https://your.bitbucket.com/",
+  "bitbucketProject": "PROJECT123",
+  "bitbucketRepo": "my-repository",
+  "bitbucketAccount": "my_account",
+  "bitbucketPass": "s3cr3t"
 }
