@@ -13,10 +13,6 @@ function getScenarioName(line) {
  */
 function extractScenarios(lines) {
     var scenarios = [], scenarioOutlineName, inExamples, inScenarioOutline = false, paramNames;
-    lines = lines
-        .map(function (val) {
-            return val.trim();
-        });
     lines.forEach(function (line, index) {
         line = line.trim();
         if (line.indexOf(OUTLINE) === 0) {
@@ -31,7 +27,7 @@ function extractScenarios(lines) {
             inExamples = true;
             paramNames = line
                 .substring(line.indexOf(PIPE) + 1, line.lastIndexOf(PIPE))
-                .split('|')
+                .split(PIPE)
                 .map(function (value) {
                     return value.trim();
                 });
