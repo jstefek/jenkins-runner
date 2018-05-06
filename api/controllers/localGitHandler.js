@@ -1,11 +1,13 @@
 'use strict';
 
-var exec = require('child_process').exec,
-    request = require('request');
-
-var pathToGitRepo, jenkinsJobUrl, jenkinsJobToken;
-var oldTime = undefined;
-var interval = 10000; // millis
+var pathToGitRepo,
+    jenkinsJobUrl,
+    jenkinsJobToken,
+    oldTime = undefined,
+    interval = 10000, // millis
+    exec = require('child_process').exec,
+    request = require('request'),
+    utils = require('../utils/utils');
 
 function updateIfNeeded() {
     function updateBranches(resolve, reject) {
@@ -128,18 +130,7 @@ function sendScenariosNames(featureName, branch, response) {
             response.status(400).send(err);
             console.log(err)
         } else {
-            response.send(stdout
-                .split('\n')
-                .map(function (value, index) {
-                    value = value.trim();
-                    if (value.indexOf('Scenario') === 0) {
-                        return {index: index + 1, name: value.substring(value.indexOf(':') + 1).trim()};
-                    }
-                    return '';
-                }).filter(function (value) {
-                    return !!value;
-                })
-            );
+            response.send(utils.extractScenarios(stdout.split('\n')));
         }
     });
 }
@@ -164,7 +155,7 @@ exports.createRequest = function (req, res) {
     req.body.data.token = jenkinsJobToken;
     // send post request with the data to the Jenkins job
     request.post({url: jenkinsJobUrl, form: req.body.data}, function (error, response, body) {
-        res.status(response.statusCode)
+        res.status(response.statusCode);
         if (!!error) {
             res.send(error);
         } else {

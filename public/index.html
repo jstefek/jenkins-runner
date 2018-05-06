@@ -130,14 +130,16 @@
                         } else if (select.id === 'ENV') {
                             items.push("<option name='" + key + "' value='" + val + "'" + (val === 'collab-demo' ? 'selected' : '') + ">" + val + "</option>");
                         } else if (select.id.indexOf('SCENARIO') >= 0) {
-                            items.push("<option name='" + key + "' value='" + val.index + "' >" + val.name + "</option>");
+                            items.push("<option name='" + key + "' value='" + val.index + "' title='" + val.name + "'>" + val.name + "</option>");
                         }
                         else {
                             items.push("<option name='" + key + "' value='" + val + "'>" + val + "</option>");
                         }
                     });
-                    if (select.id.indexOf('FEATURE') >= 0 || select.id.indexOf('SCENARIO') >= 0) {
+                    if (select.id.indexOf('FEATURE') >= 0) {
                         items.unshift("<option name='empty' value='' selected></option>");
+                    } else if (select.id.indexOf('SCENARIO') >= 0) {
+                        items.unshift("<option name='empty' value='' selected>== whole suite ==</option>");
                     }
                     $(document.getElementById(select.id))
                         .empty()
@@ -404,8 +406,7 @@
             <select id="FEATURE-1" class="w3-select w3-border w3-round-xlarge"></select>
         </p>
         <p class="w3-threequarter w3-animate-right">
-            <label for="SCENARIO-1" class="w3-text-blue">scenarios (select multiple or leave empty for whole
-                feature)</label>
+            <label for="SCENARIO-1" class="w3-text-blue">scenarios (can select multiple)</label>
             <select id="SCENARIO-1" class="w3-select w3-border w3-round-xlarge" multiple="multiple" size="10"></select>
         </p>
 

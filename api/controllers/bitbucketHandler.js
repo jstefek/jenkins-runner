@@ -1,5 +1,8 @@
-var bitbucketUrl, bitbucketProject, bitbucketRepo, jenkinsJobToken, jenkinsJobUrl, basicAuthToken;
-var request = require('request');
+'use strict';
+
+var bitbucketUrl, bitbucketProject, bitbucketRepo, jenkinsJobToken, jenkinsJobUrl, basicAuthToken,
+    request = require('request'),
+    utils = require('../utils/utils');
 
 function getRestURL() {
     return bitbucketUrl + 'projects/' + bitbucketProject + '/repos/' + bitbucketRepo + '/'
@@ -16,13 +19,12 @@ function sendFileNamesFromGitBranch(dir, branch, filter, res, map) {
             'Accept': 'application/json, text/javascript'
         },
     }, function (error, response, body) {
-        res.status(response.statusCode)
+        res.status(response.statusCode);
         if (!!error) {
             res.send(error);
         } else {
             console.log('sendFileNamesFromGitBranch done');
-            var jfiles = JSON.parse(response.body)
-                .files;
+            var jfiles = JSON.parse(response.body).files;
             var files = [];
             for (var a in jfiles) {
                 files.push(a);
@@ -46,9 +48,9 @@ function sendBranches(res) {
         headers: {
             "Authorization": "Basic " + basicAuthToken,
             'Accept': 'application/json, text/javascript'
-        },
+        }
     }, function (error, response, body) {
-        res.status(response.statusCode)
+        res.status(response.statusCode);
         if (!!error) {
             res.send(error);
         } else {
@@ -101,27 +103,21 @@ function sendScenariosNames(pathToFeature, branch, res) {
             headers: {
                 "Authorization": "Basic " + basicAuthToken,
                 'Accept': 'application/json, text/javascript'
-            },
+            }
         }, function (error, response, body) {
             res.status(response.statusCode);
             if (!!error) {
                 res.send(error);
             } else {
                 console.log('sendScenariosNames done');
-                res.send(JSON.parse(response.body)
-                    .lines
-                    .map(function (val) {
-                        return val.text;
-                    })
-                    .map(function (value, index) {
-                        value = value.trim();
-                        if (value.indexOf('Scenario') === 0) {
-                            return {index: index + 1, name: value.substring(value.indexOf(':') + 1).trim()};
-                        }
-                        return '';
-                    }).filter(function (value) {
-                        return !!value;
-                    }));
+                res.send(
+                    utils.extractScenarios(
+                        JSON.parse(response.body)
+                            .lines
+                            .map(function (val) {
+                                return val.text
+                            })
+                    ));
             }
         }
     );
@@ -165,7 +161,7 @@ exports.createRequest = function (req, res) {
     req.body.data.token = jenkinsJobToken;
     // send post request with the data to the Jenkins job
     request.post({url: jenkinsJobUrl, form: req.body.data}, function (error, response, body) {
-        res.status(response.statusCode)
+        res.status(response.statusCode);
         if (!!error) {
             res.send(error);
         } else {
