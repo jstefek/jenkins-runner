@@ -24,6 +24,7 @@
         data.BROWSER = $('#BROWSER').val();
         data.APOLLO_VERSION = $('#APOLLO_VERSION').val();
         data.SCHEDULER_VERSION = $('#SCHEDULER_VERSION').val();
+        data.MCU_LABEL = $('#MCU_LABEL').val();
         data.SETUP_CONTAINERS = $('#SETUP_CONTAINERS').is(':checked');
         data.CONTAINERS_COUNT = $('#CONTAINERS_COUNT').val();
 
@@ -400,6 +401,11 @@
             <label for="SCHEDULER_VERSION" class="w3-text-blue">scheduler version</label>
             <input id="SCHEDULER_VERSION" class="w3-input w3-border w3-round-xlarge" type="text" value=""
                    placeholder="version|empty"/>
+        </p>
+        <p class="w3-third">
+            <label for="MCU_LABEL" class="w3-text-blue">mcu label</label>
+            <input id="MCU_LABEL" class="w3-input w3-border w3-round-xlarge" type="text" value=""
+                   placeholder="label|empty"/>
         </p>
         <p class="w3-quarter w3-animate-left">
             <label for="FEATURE-1" class="w3-text-blue">feature</label>
